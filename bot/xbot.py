@@ -16,6 +16,8 @@ writes the words around them.
 from __future__ import annotations
 
 import argparse
+import faulthandler
+import threading
 import json
 import logging
 import os
@@ -330,6 +332,7 @@ class Bot:
     user_hits: dict = field(default_factory=lambda: defaultdict(deque))
     next_post: float = 0.0
     next_poll: float = 0.0
+    tick: float = 0.0
 
     def schedule_post(self, now: float, first: bool = False):
         lo, hi = (1, 3) if first else (POST_MIN, POST_MAX)
@@ -399,9 +402,9 @@ class Bot:
 
     def poll(self):
         if self.x:
+            log.info("checking mentions...")
             ms = self.x.mentions(self.since_id)
-            if ms:
-                log.info("%d new mention(s)", len(ms))
+            log.info("%d new mention(s). next post in %.0f s", len(ms), self.next_post - time.time())
             self.handle_mentions(ms)
 
     def run_forever(self):
@@ -415,8 +418,10 @@ class Bot:
                 time.sleep(wait)
                 wait = min(wait * 2, 900)
         backoff = 0
+        self.tick = time.time()
+        threading.Thread(target=self.watchdog, daemon=True).start()
         while True:
-            now = time.time()
+            now = self.tick = time.time()
             try:
                 if now >= self.next_post:
                     self.schedule_post(now)
@@ -432,6 +437,20 @@ class Bot:
                 log.debug("details", exc_info=True)
                 time.sleep(backoff)
             time.sleep(5)
+
+
+    def watchdog(self):
+        """If the main loop freezes, print where it is stuck so the logs say why."""
+        warned = False
+        while True:
+            time.sleep(30)
+            stalled = time.time() - self.tick
+            if stalled > 120 and not warned:
+                log.warning("main loop stalled for %.0f s; current stack:", stalled)
+                faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+                warned = True
+            elif stalled <= 120:
+                warned = False
 
 
 def main():
