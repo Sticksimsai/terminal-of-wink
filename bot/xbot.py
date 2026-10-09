@@ -53,6 +53,9 @@ MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-5-5")              # its
 REPLY_MODEL = os.environ.get("REPLY_MODEL", "claude-sonnet-5-5")            # replies: smarter, can research
 WEB_SEARCH = os.environ.get("REPLY_WEB_SEARCH", "1") == "1"
 MAX_SEARCHES = int(env_float("MAX_SEARCHES_PER_REPLY", 2))
+# room for the model to think before it writes; billed only for what is used
+MAX_TOKENS = int(env_float("MAX_TOKENS", 4000))
+MAX_TOKENS_RESEARCH = int(env_float("MAX_TOKENS_RESEARCH", 8000))
 
 MODES = {"thought": 24, "explain": 18, "bits": 12, "superpose": 13, "shots": 12, "art": 12, "lore": 9}
 ART_KEYS = ", ".join(art.ART_KEYS)
@@ -128,7 +131,7 @@ class Brain:
         if not self.client:
             return None
         prompt = (context + "\n\n" if context else "") + task
-        kwargs = dict(model=model or MODEL, max_tokens=1200 if research else 400, system=persona.PERSONA)
+        kwargs = dict(model=model or MODEL, max_tokens=MAX_TOKENS_RESEARCH if research else MAX_TOKENS, system=persona.PERSONA)
         if research:
             kwargs["tools"] = [{"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_SEARCHES}]
         messages = [{"role": "user", "content": prompt}]
@@ -147,7 +150,8 @@ class Brain:
             last_result = max((i for i, b in enumerate(blocks) if getattr(b, "type", "") == "web_search_tool_result"), default=-1)
             raw = "".join(getattr(b, "text", "") for b in blocks[last_result + 1:] if getattr(b, "type", "") == "text").strip()
             if not raw:
-                log.warning("claude gave no text (stop_reason=%s)", msg.stop_reason)
+                log.warning("claude gave no text (stop_reason=%s)%s", msg.stop_reason,
+                            "; raise MAX_TOKENS" if msg.stop_reason == "max_tokens" else "")
                 return None
             return raw
         except Exception as e:
