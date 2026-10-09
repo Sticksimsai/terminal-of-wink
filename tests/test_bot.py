@@ -94,3 +94,16 @@ def test_per_user_limit():
     bot = xbot.Bot(brain, x, dry_run=False)
     bot.boot()
     assert len(x.posts) == xbot.MAX_REPLIES_PER_USER_30MIN
+
+
+def test_reply_can_draw_art_and_remembers_recent_replies():
+    brain = FakeBrain({"skip": False, "text": "two qubits, one fate", "encode": "", "art": "circuit:bell"})
+    r = xbot.build_reply(brain, "what is a bell state", "anon", None, ["earlier reply about cats"])
+    assert "─H──●──M" in r
+    assert "earlier reply about cats" in brain.prompts[0]
+
+
+def test_x_len_counts_wide_glyphs_double_and_fit_respects_it():
+    assert xbot.x_len("abc") == 3
+    assert xbot.x_len("█─⊕") == 6
+    assert xbot.x_len(xbot.fit("█" * 300)) <= 280

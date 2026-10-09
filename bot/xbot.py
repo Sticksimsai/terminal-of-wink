@@ -27,7 +27,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 from app import quantum
-from bot import persona
+from bot import art, persona
 
 log = logging.getLogger("terminal-of-wink")
 
@@ -49,7 +49,8 @@ BOOT_REPLY_WINDOW_MIN = env_float("BOOT_REPLY_WINDOW_MINUTES", 30)
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"
 MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-5-5")
 
-MODES = {"thought": 35, "bits": 18, "superpose": 17, "shots": 18, "lore": 12}
+MODES = {"thought": 24, "explain": 18, "bits": 12, "superpose": 13, "shots": 12, "art": 12, "lore": 9}
+ART_KEYS = ", ".join(art.ART_KEYS)
 
 MAX_LEN = 280
 URL_RE = re.compile(r"(https?://\S+|www\.\S+|\b[\w-]+\.(com|io|xyz|net|org|app|fun|ai)\b\S*)", re.I)
@@ -78,10 +79,22 @@ def sanitize(text: str, allow_ca: bool = False) -> str:
     return text
 
 
+def x_len(text: str) -> int:
+    """Length the way X counts it: Latin and common punctuation weigh 1, most other glyphs (─ █ ⊕ ψ) weigh 2."""
+    n = 0
+    for ch in text:
+        c = ord(ch)
+        light = c <= 0x10FF or 0x2000 <= c <= 0x200D or 0x2010 <= c <= 0x201F or 0x2032 <= c <= 0x2037
+        n += 1 if light else 2
+    return n
+
+
 def fit(text: str, limit: int = MAX_LEN) -> str:
-    if len(text) <= limit:
+    if x_len(text) <= limit:
         return text
-    cut = text[: limit - 1].rsplit(" ", 1)[0]
+    while text and x_len(text) > limit - 1:
+        text = text[:-1]
+    cut = text.rsplit(" ", 1)[0] if " " in text[-20:] else text
     return cut.rstrip(" ,;:-") + "."
 
 
@@ -157,6 +170,8 @@ FALLBACK_LORE = [
 ]
 FALLBACK_WORDS = [("wink", "4 bytes. you know what they say"), ("hi", "smallest greeting that fits in a register"),
                   ("look", "this one changes when you read it")]
+FALLBACK_ART = [("circuit:wink", "two lines of code. two faces. one of them, every time you look"),
+                ("bell", "two qubits, one story"), ("decohere", "how it feels when you stop replying")]
 FALLBACK_PAIRS = [("stay", "go!!", "decided by a coin made of light"), ("yes", "nah", "asked the register. it answered"),
                   ("alive", "dead!", "opened the box")]
 
@@ -168,10 +183,19 @@ def build_post(brain: Brain, mode: str, recent: list[str]) -> str | None:
     if recent:
         context = "Your recent posts (do not repeat their ideas or phrasing):\n" + "\n".join(f"- {r[:140]}" for r in recent[-15:])
 
-    if mode in ("thought", "lore"):
+    if mode in ("thought", "lore", "explain"):
         out = brain.ask(persona.POST_TASKS[mode], context)
-        text = (out or {}).get("text") or random.choice(FALLBACK_THOUGHTS if mode == "thought" else FALLBACK_LORE)
+        text = (out or {}).get("text") or random.choice(FALLBACK_LORE if mode == "lore" else FALLBACK_THOUGHTS)
         return fit(sanitize(text))
+
+    if mode == "art":
+        out = brain.ask(persona.POST_TASKS["art"].format(art_keys=ART_KEYS), context) or {}
+        drawing = art.render(str(out.get("art", "")))
+        caption = sanitize(str(out.get("caption", "")))
+        if not drawing:
+            key, caption = random.choice(FALLBACK_ART)
+            drawing = art.render(key)
+        return fit(drawing + ("\n\n" + caption if caption else ""))
 
     if mode == "bits":
         out = brain.ask(persona.POST_TASKS["bits"], context) or {}
@@ -190,9 +214,7 @@ def build_post(brain: Brain, mode: str, recent: list[str]) -> str | None:
             a, b, caption = random.choice(FALLBACK_PAIRS)
         p = quantum.plan(a, b)
         result = quantum.bits_to_text(quantum.measure_once(p))
-        k = len(p.superposed) - 1
-        gates = f"qc.h(qr[{p.superposed[0]}])" + (f" + {k} cnot" + ("s" if k > 1 else "") if k else "")
-        body = f"|{a}> + |{b}>\n{gates}\nmeasured: {result}"
+        body = f"|{a}> + |{b}>\n{art.circuit_for(p)}\nmeasured: {result}"
         return fit(body + ("\n\n" + sanitize(caption) if caption else ""))
 
     if mode == "shots":
@@ -200,7 +222,7 @@ def build_post(brain: Brain, mode: str, recent: list[str]) -> str | None:
         noise = random.choice([0, 0, 0, 0.01, 0.02, 0.03])
         counts = quantum.run(quantum.plan(";)", "8)"), shots, noise)
         hits = {quantum.text_to_bits(";)"), quantum.text_to_bits("8)")}
-        lines = [f"{quantum.bits_to_text(k)}  {v / shots * 100:.1f}%" for k, v in counts if k in hits]
+        lines = [art.bars([(quantum.bits_to_text(k), v / shots) for k, v in counts if k in hits])]
         misses = sum(v for k, v in counts if k not in hits)
         head = f"measured |;)> + |8)> x{shots}" + (f" (readout noise {noise * 100:.0f}%)" if noise else "")
         result = head + "\n" + "\n".join(lines) + (f"\n{misses} garbled shots" if misses else "")
@@ -211,12 +233,16 @@ def build_post(brain: Brain, mode: str, recent: list[str]) -> str | None:
     return None
 
 
-def build_reply(brain: Brain, mention_text: str, author: str, parent_text: str | None) -> str | None:
+def build_reply(brain: Brain, mention_text: str, author: str, parent_text: str | None,
+                recent_replies: list[str] | None = None) -> str | None:
     asked_ca = bool(CA_ASK_RE.search(mention_text))
     ctx = f"@{author} wrote: {mention_text}"
     if parent_text:
         ctx = f"They are replying to your post: {parent_text}\n\n" + ctx
-    out = brain.ask(persona.REPLY_TASK, ctx)
+    if recent_replies:
+        ctx = "Your recent replies (never reuse their openers or phrasing):\n" + "\n".join(
+            f"- {r[:120]}" for r in recent_replies[-12:]) + "\n\n" + ctx
+    out = brain.ask(persona.REPLY_TASK.format(art_keys=ART_KEYS), ctx)
     if out is None:  # offline
         if asked_ca:
             return f"ca: {persona.CA}"
@@ -227,9 +253,12 @@ def build_reply(brain: Brain, mention_text: str, author: str, parent_text: str |
     if not asked_ca and MONEY_RE.search(text):
         text = "i only know how to measure. the rest is noise ;)"
     word = ascii_only(str(out.get("encode", "") or "")).strip()[:8]
+    drawing = art.render(str(out.get("art", "") or ""))
     if word:
         bits, _ = quantum.measure_text(word)
         text = text + "\n" + spaced_bits(bits)
+    elif drawing and len(text) + len(drawing) < MAX_LEN - 2:
+        text = text + "\n\n" + drawing
     return fit(text) if text else None
 
 
@@ -292,6 +321,7 @@ class Bot:
     x: XApi | None
     dry_run: bool = DRY_RUN
     recent: deque = field(default_factory=lambda: deque(maxlen=30))
+    recent_replies: deque = field(default_factory=lambda: deque(maxlen=20))
     replied: set = field(default_factory=set)
     since_id: str | None = None
     user_hits: dict = field(default_factory=lambda: defaultdict(deque))
@@ -319,7 +349,7 @@ class Bot:
 
     def publish(self, text: str, reply_to: str | None = None) -> None:
         if self.dry_run or not self.x:
-            print(("\n--- reply to " + reply_to if reply_to else "\n--- post") + f" ({len(text)} chars)\n{text}", flush=True)
+            print(("\n--- reply to " + reply_to if reply_to else "\n--- post") + f" ({x_len(text)} chars)\n{text}", flush=True)
             return
         tid = self.x.post(text, reply_to)
         log.info("%s %s", "replied" if reply_to else "posted", tid)
@@ -353,9 +383,10 @@ class Bot:
             text = strip_leading_mentions(m["text"])
             if not text:
                 continue
-            reply = build_reply(self.brain, text, m["author"], m["parent_text"])
+            reply = build_reply(self.brain, text, m["author"], m["parent_text"], list(self.recent_replies))
             if reply:
                 self.publish(reply, reply_to=m["id"])
+                self.recent_replies.append(reply)
                 done += 1
 
     def poll(self):
@@ -396,7 +427,7 @@ def main():
         recent: list[str] = []
         for mode in (list(MODES) * args.preview)[: args.preview]:
             text = build_post(brain, mode, recent)
-            print(f"\n--- {mode} ({len(text)} chars)\n{text}")
+            print(f"\n--- {mode} ({x_len(text)} chars)\n{text}")
             recent.append(text)
         return
 
