@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Qubit Wink Terminal</title>
+<title>Terminal of Wink ;)</title>
 <meta name="description" content="A black-and-white terminal that talks through qubits. A homage to Quantum Computing Stack Exchange answer #1685, where ;) was written into 16 qubits.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' fill='%23fff' text-anchor='middle'%3E;)%3C/text%3E%3C/svg%3E">
@@ -31,7 +31,7 @@ body {
 ::selection { background: var(--fg); color: var(--bg); }
 .term { width: 100%; max-width: 920px; height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .top { border-bottom: 1px dashed var(--low); padding-bottom: 8px; }
-.banner { margin: 0; font-size: 12px; line-height: 1.15; overflow-x: auto; }
+.banner { margin: 0; font-size: 14px; line-height: 1.1; font-weight: 600; overflow-x: auto; }
 .status { color: var(--mid); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }
 .status b { color: var(--fg); font-weight: 400; }
 .log { flex: 1; min-height: 0; overflow-y: auto; padding-block: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
@@ -71,19 +71,34 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 1px solid 
 .lore { max-width: 70ch; display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
 .lore p { margin: 0; }
 .lore a { color: var(--fg); }
-@media (max-width: 560px) { .banner { font-size: 9px; } .indent { padding-left: 2ch; } }
+.ca { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 8px; }
+.ca code { font-family: var(--mono); font-size: 13px; color: var(--fg); word-break: break-all; min-width: 0; }
+.links { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font-size: 12px; }
+.links a { color: var(--mid); text-decoration: none; }
+.links a:hover { color: var(--fg); }
+@media (max-width: 560px) { .indent { padding-left: 2ch; } }
 @media (prefers-reduced-motion: reduce) { .cursor::after { animation: none; } }
 </style>
 </head>
 <body>
 <div class="term">
   <header class="top">
-<pre class="banner" aria-label="QUBIT ;)">  ___  _   _ ____ ___ _____     _   __
- / _ \| | | | __ )_ _|_   _|   (_)  \ \
-| | | | | | |  _ \| |  | |      _    | |
-| |_| | |_| | |_) | |  | |     ( )   | |
- \__\_\\___/|____/___| |_|     |/   / /
-                                   /_/   </pre>
+<pre class="banner" aria-label=";)"> _   __
+(_)  \ \
+ _    | |
+( )   | |
+|/   / /
+    /_/</pre>
+    <div class="ca">
+      <span class="mid">ca</span>
+      <code id="ca">1W6i6SXZH9KRZ5jwZankisK3Sjy4PtEpqRLTyMs1kqy</code>
+      <button type="button" id="ca-copy">[ copy ]</button>
+    </div>
+    <nav class="links" aria-label="Lore links">
+      <a href="https://quantumcomputing.stackexchange.com/questions/1678/a-sample-quantum-algorithm-useful-for-demonstrating-languages" target="_blank" rel="noopener">[ the question ]</a>
+      <a href="https://quantumcomputing.stackexchange.com/a/1685" target="_blank" rel="noopener">[ answer #1685 ]</a>
+      <a href="https://github.com/QISKit/qiskit-tutorial/blob/master/hello_world/quantum_emoticon.ipynb" target="_blank" rel="noopener">[ original qiskit notebook ]</a>
+    </nav>
     <div class="status">
       <span>backend <b>qiskit aer · stabilizer</b></span>
       <span>readout err <b id="nz">0%</b></span>
@@ -317,9 +332,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 1px solid 
     p('8)', 'then the twist. ;) and 8) differ only on qubits 8 and 9. swap those two x gates for qc.h(qr[9]) and qc.cx(qr[9], qr[8]) and the register holds both faces at once. each measurement picks one.');
     p('noise', "real 2018 hardware misread qubits, so runs also returned near-miss strings. type noise 0.03 to feel it. the number is illustrative, not the chip's real calibration.");
     p('now', 'the original QuantumProgram and Qconfig api is long gone. this terminal runs every circuit on modern qiskit aer. type qiskit after any run for the code.');
-    const a = el('a', null, 'quantumcomputing.stackexchange.com/a/1685');
-    a.href = 'https://quantumcomputing.stackexchange.com/a/1685'; a.target = '_blank'; a.rel = 'noopener';
-    const pa = el('p'); pa.append('-> ', a); d.appendChild(pa);
+    [
+      ['the question', 'https://quantumcomputing.stackexchange.com/questions/1678/a-sample-quantum-algorithm-useful-for-demonstrating-languages'],
+      ['answer #1685', 'https://quantumcomputing.stackexchange.com/a/1685'],
+      ['the original qiskit notebook', 'https://github.com/QISKit/qiskit-tutorial/blob/master/hello_world/quantum_emoticon.ipynb'],
+    ].forEach(([label, href]) => {
+      const a = el('a', null, label); a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      const pa = el('p'); pa.append('-> ', a); d.appendChild(pa);
+    });
     out(d);
   }
 
@@ -444,6 +464,16 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 1px solid 
     const b = el('button', null, '[ ' + c + ' ]'); b.type = 'button';
     b.addEventListener('click', () => { hist.push(c); hIdx = hist.length; exec(c); });
     chips.appendChild(b);
+  });
+
+  // ---------- contract address copy ----------
+  const caBtn = document.getElementById('ca-copy'), caEl = document.getElementById('ca');
+  caBtn.addEventListener('click', () => {
+    const sel = () => { const r = document.createRange(); r.selectNodeContents(caEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r); caBtn.textContent = '[ selected, press ctrl+c ]'; };
+    if (!navigator.clipboard) return sel();
+    navigator.clipboard.writeText(caEl.textContent.trim()).then(() => {
+      caBtn.textContent = '[ copied ]'; setTimeout(() => caBtn.textContent = '[ copy ]', 1500);
+    }, sel);
   });
 
   // ---------- boot ----------
