@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Qubit Wink Terminal</title>
+<meta name="description" content="A black-and-white terminal that talks through qubits. A homage to Quantum Computing Stack Exchange answer #1685, where ;) was written into 16 qubits.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' fill='%23fff' text-anchor='middle'%3E;)%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --fg: #f2f2f2;
+  --mid: #9a9a9a;
+  --low: #575757;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: var(--bg); }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--mono);
+  font-size: 14px; line-height: 1.5;
+  padding-inline: 16px; padding-block: 12px;
+  display: flex; justify-content: center;
+}
+::selection { background: var(--fg); color: var(--bg); }
+.term { width: 100%; max-width: 920px; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.top { border-bottom: 1px dashed var(--low); padding-bottom: 8px; }
+.banner { margin: 0; font-size: 12px; line-height: 1.15; overflow-x: auto; }
+.status { color: var(--mid); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; }
+.status b { color: var(--fg); font-weight: 400; }
+.log { flex: 1; min-height: 0; overflow-y: auto; padding-block: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+.log > * { min-width: 0; flex-shrink: 0; }
+.ln { white-space: pre-wrap; word-break: break-word; }
+.mid { color: var(--mid); }
+.low { color: var(--low); }
+.bold { font-weight: 600; }
+.gap { margin-top: 12px; }
+.inv { background: var(--fg); color: var(--bg); padding: 0 2px; }
+.who { color: var(--mid); }
+.who.q { color: var(--fg); font-weight: 600; }
+pre { margin: 2px 0; font-family: var(--mono); font-size: 13px; line-height: 1.25; }
+.scroll-x { overflow-x: auto; max-width: 100%; }
+.bits { font-size: 12px; letter-spacing: 0.04em; color: var(--low); word-break: normal; }
+.bits .by { white-space: nowrap; }
+.bits .o { color: var(--fg); }
+.bits .q { background: var(--fg); color: var(--bg); }
+.bits .x { text-decoration: underline; color: var(--fg); }
+.bits.nowrap { white-space: nowrap; word-break: normal; }
+.bits .lbl { color: var(--mid); letter-spacing: 0; }
+.indent { padding-left: 6ch; }
+.cursor::after { content: "_"; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.codebox { border: 1px dashed var(--low); padding: 6px 10px; margin: 4px 0; max-width: 760px; }
+.codebox pre { overflow-x: auto; }
+.codebox .c { color: var(--low); }
+button { font: inherit; font-size: 12px; color: var(--mid); background: transparent; border: 0; padding: 2px 0; cursor: pointer; }
+button:hover { color: var(--fg); }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 1px solid var(--fg); outline-offset: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 2px 14px; border-top: 1px dashed var(--low); padding-top: 6px; }
+.prompt { display: flex; align-items: center; gap: 8px; padding-block: 8px 4px; }
+.prompt label { white-space: nowrap; font-weight: 600; }
+.prompt input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--fg); font: inherit; font-size: 16px; caret-color: var(--fg); padding: 2px 0; }
+.prompt input::placeholder { color: var(--low); }
+.prompt input:focus { outline: none; }
+.lore { max-width: 70ch; display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+.lore p { margin: 0; }
+.lore a { color: var(--fg); }
+@media (max-width: 560px) { .banner { font-size: 9px; } .indent { padding-left: 2ch; } }
+@media (prefers-reduced-motion: reduce) { .cursor::after { animation: none; } }
+</style>
+</head>
+<body>
+<div class="term">
+  <header class="top">
+<pre class="banner" aria-label="QUBIT ;)">  ___  _   _ ____ ___ _____     _   __
+ / _ \| | | | __ )_ _|_   _|   (_)  \ \
+| | | | | | |  _ \| |  | |      _    | |
+| |_| | |_| | |_) | |  | |     ( )   | |
+ \__\_\\___/|____/___| |_|     |/   / /
+                                   /_/   </pre>
+    <div class="status">
+      <span>backend <b>qiskit aer · stabilizer</b></span>
+      <span>readout err <b id="nz">0%</b></span>
+      <span>voice <b id="voice">connecting</b></span>
+    </div>
+  </header>
+  <main class="log" id="log" aria-live="polite"></main>
+  <nav class="chips" id="chips" aria-label="Quick commands"></nav>
+  <form class="prompt" id="form" autocomplete="off">
+    <label for="cmd">qpu:~$</label>
+    <input id="cmd" type="text" spellcheck="false" autocapitalize="off" maxlength="500" placeholder="talk to me, or type help">
+  </form>
+</div>
+
+<script>
+(() => {
+  const log = document.getElementById('log');
+  const input = document.getElementById('cmd');
+  const enc = new TextEncoder();
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sleep = ms => new Promise(r => setTimeout(r, reduced ? 0 : ms));
+  const LORE_Q = /;\)|8\)|\bwink|1685|\blore\b|emoticon|smiley|origin|who are you|your name|qpu-?16/i;
+
+  let noise = 0, busy = false;
+  let last = null;            // {a, b, shots}
+  let lastResult = null;      // last /api/run response
+  const turns = [];
+  const hist = []; let hIdx = 0;
+
+  // ---------- output ----------
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  const scroll = () => { log.scrollTop = log.scrollHeight; };
+  function out(n) { log.appendChild(n); scroll(); return n; }
+  const line = (t, cls = '') => out(el('div', 'ln ' + cls, t));
+  async function type(node, text, cps = 900) {
+    if (reduced) { node.textContent = text; scroll(); return; }
+    const step = Math.max(1, Math.round(cps / 60));
+    for (let i = 0; i < text.length; i += step) {
+      node.textContent = text.slice(0, i + step); scroll();
+      await new Promise(r => requestAnimationFrame(r));
+    }
+  }
+  function echo(cmd) { const d = el('div', 'ln gap'); d.append(el('span', 'bold', 'qpu:~$ '), document.createTextNode(cmd)); out(d); }
+
+  // ---------- bits ----------
+  const textToBits = s => Array.from(enc.encode(s), b => b.toString(2).padStart(8, '0')).join('');
+  function bitsInto(container, bits, mask, ref) {
+    for (let i = 0; i < bits.length; i += 8) {
+      const by = el('span', 'by');
+      for (let j = i; j < i + 8 && j < bits.length; j++) {
+        if (mask && mask[j]) by.appendChild(el('span', 'q', '?'));
+        else if (ref && ref[j] !== bits[j]) by.appendChild(el('span', 'x', bits[j]));
+        else if (bits[j] === '1') by.appendChild(el('span', 'o', '1'));
+        else by.appendChild(document.createTextNode('0'));
+      }
+      container.append(by, document.createTextNode(' '));
+    }
+  }
+  function regEl(bits, label, mask, wrap) {
+    const w = el('div', 'scroll-x');
+    const r = el('div', 'bits' + (wrap ? '' : ' nowrap'));
+    bitsInto(r, bits, mask);
+    if (label) r.appendChild(el('span', 'lbl', ' ' + label));
+    w.appendChild(r);
+    return w;
+  }
+
+  // ---------- api ----------
+  async function api(path, body) {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      let msg = `error ${res.status}`;
+      try { const j = await res.json(); msg = typeof j.detail === 'string' ? j.detail : (j.detail && j.detail[0] && j.detail[0].msg) || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    return res.json();
+  }
+  async function runOnServer(a, b, shots) {
+    const r = await api('/api/run', { a, b: b ?? null, shots, noise });
+    last = { a, b, shots }; lastResult = r;
+    return r;
+  }
+
+  // ---------- renderers ----------
+  function histogram(r) {
+    const shown = r.counts.slice(0, 8), W = window.innerWidth < 560 ? 18 : 40;
+    const max = shown[0].n;
+    const label = Math.max(...shown.map(c => c.text.length), 4);
+    const lines = shown.map(c => {
+      const len = Math.max(1, Math.round(c.n / max * W));
+      return `${c.text.padEnd(label)} |${(c.hit ? '#' : ':').repeat(len)}${' '.repeat(W - len)}| ${String(c.n).padStart(5)}  ${(c.n / r.shots * 100).toFixed(1).padStart(5)}%`;
+    });
+    const w = el('div', 'scroll-x'); w.appendChild(el('pre', null, lines.join('\n'))); out(w);
+    if (r.distinct > 8) line(`+ ${r.distinct - 8} rarer strings from readout errors (marked ':')`, 'low');
+  }
+  function showRun(r, quiet) {
+    const p = r.plan;
+    if (!quiet) {
+      if (p.b_text != null) {
+        const mask = Array.from(p.a_bits, (c, i) => c !== p.b_bits[i]);
+        out(regEl(p.a_bits, '|' + p.a_text + '>'));
+        out(regEl(p.b_bits, '|' + p.b_text + '>'));
+        out(regEl(p.a_bits, `${p.superposed.length} qubit${p.superposed.length === 1 ? '' : 's'} in superposition`, mask));
+        const d = p.superposed;
+        if (!d.length) line('identical strings. nothing to superpose.', 'mid');
+        else if (d.length === 1) line(`qc.h(qr[${d[0]}])  # one hadamard is enough`, 'mid');
+        else line(`qc.h(qr[${d[0]}]) + ${d.length - 1} cnot${d.length > 2 ? 's' : ''}  # same trick as answer #1685`, 'mid');
+      } else {
+        out(regEl(p.a_bits, '|' + p.a_text + '>'));
+        line(`${p.n} qubits, ${p.ops[0] ? p.ops[0].q.length : 0} x gates. no superposition, every shot agrees.`, 'mid');
+      }
+    }
+    line(`aer.run(shots=${r.shots})${r.noise ? `  readout err ${(r.noise * 100).toFixed(1)}%` : ''}`, 'low');
+    histogram(r);
+  }
+  function codeBox(code) {
+    const box = el('div', 'codebox');
+    const btn = el('button', null, '[ copy ]'); btn.type = 'button';
+    const pre = el('pre');
+    code.split('\n').forEach((l, i) => { if (i) pre.append('\n'); pre.append(/^\s*#/.test(l) ? el('span', 'c', l) : document.createTextNode(l)); });
+    btn.addEventListener('click', () => {
+      const sel = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = '[ selected, press ctrl+c ]'; };
+      if (!navigator.clipboard) return sel();
+      navigator.clipboard.writeText(code).then(() => { btn.textContent = '[ copied ]'; setTimeout(() => btn.textContent = '[ copy ]', 1500); }, sel);
+    });
+    box.append(btn, pre); out(box);
+  }
+
+  // ---------- chat over server-sent events ----------
+  async function chatStream(onDelta) {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: turns, noise }) });
+    if (!res.ok) {
+      let msg = `error ${res.status}`;
+      try { const j = await res.json(); if (typeof j.detail === 'string') msg = j.detail; } catch (e) {}
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '', done = null;
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        let ev = 'message', data = '';
+        for (const l of chunk.split('\n')) {
+          if (l.startsWith('event: ')) ev = l.slice(7);
+          else if (l.startsWith('data: ')) data += l.slice(6);
+        }
+        if (!data) continue;
+        const obj = JSON.parse(data);
+        if (ev === 'delta') onDelta(obj.text);
+        else if (ev === 'done') done = obj;
+      }
+    }
+    if (!done) throw new Error('the voice link closed early');
+    return done;
+  }
+
+  async function talk(msg) {
+    const you = el('div', 'ln gap');
+    you.append(el('span', 'who', 'you> '), document.createTextNode(msg));
+    out(you);
+    const tx = textToBits(msg);
+    out(regEl(tx.slice(0, 64 * 8), `tx ${tx.length} qubits`)).classList.add('indent');
+
+    const qline = el('div', 'ln gap');
+    const body = el('span', 'cursor', 'thinking');
+    qline.append(el('span', 'who q', 'qpu> '), body);
+    out(qline);
+    const rx = el('div', 'bits indent');
+    out(rx);
+    let spin = 0, receiving = false;
+    const spinner = setInterval(() => { if (!receiving) body.textContent = 'thinking ' + '|/-\\'[spin++ % 4]; }, 120);
+
+    turns.push({ role: 'user', content: msg });
+    while (turns.length > 12) turns.shift();
+    while (turns.length && turns[0].role !== 'user') turns.shift();
+
+    let res;
+    try {
+      let streamed = 0;
+      res = await chatStream(delta => {
+        receiving = true;
+        const bits = textToBits(delta);
+        streamed += bits.length;
+        body.textContent = `receiving ${streamed} qubits`;
+        if (streamed - bits.length < 48 * 8) bitsInto(rx, bits.slice(0, 48 * 8 - (streamed - bits.length)));
+        scroll();
+      });
+    } catch (e) {
+      clearInterval(spinner);
+      body.classList.remove('cursor');
+      body.textContent = '';
+      turns.pop();
+      line(e.message, 'low indent');
+      return;
+    }
+    clearInterval(spinner);
+    turns.push({ role: 'assistant', content: res.reply });
+
+    // replace the streamed bits with what was actually measured; flipped bits are underlined
+    // (only the first 48 bytes stay on screen so long replies don't bury the chat)
+    const SHOW = 48 * 8;
+    rx.textContent = '';
+    bitsInto(rx, res.measured_bits.slice(0, SHOW), null, res.sent_bits.slice(0, SHOW));
+    const more = res.measured_bits.length > SHOW ? `+${(res.measured_bits.length - SHOW) / 8} bytes · ` : '';
+    rx.appendChild(el('span', 'lbl', ` ${more}rx ${res.qubits} qubits · ${res.registers} register${res.registers === 1 ? '' : 's'}${res.flipped ? ` · ${res.flipped} flipped (underlined)` : ''}`));
+
+    body.classList.remove('cursor');
+    body.textContent = '';
+    await type(body, res.measured_text + ' ');
+    const face = el('span', 'bold', '?');
+    body.appendChild(face);
+    if (!reduced) for (let i = 0; i < 8; i++) { face.textContent = i % 2 ? '8)' : ';)'; await sleep(60); }
+    face.textContent = res.wink;
+    line(`qc.h(qr[9]); qc.cx(qr[9], qr[8]); measure -> ${res.wink}`, 'low indent');
+    if (res.offline) line('voice is offline on this server, so that was a canned reply.', 'low indent');
+    if (res.lore) line('type lore for the whole story, or wink to replay the original circuit', 'low indent');
+    last = { a: ';)', b: '8)', shots: 1024 }; lastResult = null;
+  }
+
+  // ---------- lore ----------
+  function lore() {
+    const d = el('div', 'lore');
+    const p = (tag, t) => { const e = el('p'); e.append(el('span', 'inv', tag), document.createTextNode('  ' + t)); d.appendChild(e); };
+    p('2018', 'someone on quantum computing stack exchange asked for a tiny quantum program to show off quantum languages. a quantum hello world.');
+    p('#1685', 'one answer said hello world would need about 100 qubits. so it wrote ;) instead. in ascii that is 00111011 00101001: 16 bits, 16 qubits, an x gate on every 1.');
+    p('ibmqx5', "sixteen was the limit. ibm's biggest public cloud chip at the time had exactly 16 qubits, so two characters was all the text it could hold.");
+    p('8)', 'then the twist. ;) and 8) differ only on qubits 8 and 9. swap those two x gates for qc.h(qr[9]) and qc.cx(qr[9], qr[8]) and the register holds both faces at once. each measurement picks one.');
+    p('noise', "real 2018 hardware misread qubits, so runs also returned near-miss strings. type noise 0.03 to feel it. the number is illustrative, not the chip's real calibration.");
+    p('now', 'the original QuantumProgram and Qconfig api is long gone. this terminal runs every circuit on modern qiskit aer. type qiskit after any run for the code.');
+    const a = el('a', null, 'quantumcomputing.stackexchange.com/a/1685');
+    a.href = 'https://quantumcomputing.stackexchange.com/a/1685'; a.target = '_blank'; a.rel = 'noopener';
+    const pa = el('p'); pa.append('-> ', a); d.appendChild(pa);
+    out(d);
+  }
+
+  // ---------- commands ----------
+  function parseArgs(s) { const a = [], re = /"([^"]*)"|'([^']*)'|(\S+)/g; let m; while ((m = re.exec(s))) a.push(m[1] ?? m[2] ?? m[3]); return a; }
+  const commands = {
+    help() {
+      const rows = [
+        ['(anything)', 'talk. your words go out as qubits, my reply comes back as qubits'],
+        ['wink', 'write ;) into 16 qubits, the original answer'],
+        ['superpose A B', 'two strings in superposition. try: superpose cat dog'],
+        ['encode TEXT', 'write text into qubits, no superposition'],
+        ['run [shots]', 'measure the last circuit again'],
+        ['circuit', 'draw the last circuit (qiskit text drawer)'],
+        ['qiskit', 'runnable qiskit code for the last circuit'],
+        ['decode BITS', 'bits back to text'],
+        ['noise P', 'readout error per qubit, 0 to 0.25. also garbles my replies'],
+        ['lore', 'the story of answer #1685'],
+        ['clear', 'clear the screen'],
+      ];
+      const w = Math.max(...rows.map(r => r[0].length));
+      const s = el('div', 'scroll-x'); s.appendChild(el('pre', null, rows.map(([k, v]) => k.padEnd(w + 3) + v).join('\n'))); out(s);
+    },
+    lore,
+    async wink() { showRun(await runOnServer(';)', null, 1024)); },
+    async encode(a) { const t = a.join(' '); if (!t) return line('usage: encode TEXT', 'mid'); showRun(await runOnServer(t, null, 1024)); },
+    async superpose(a) {
+      if (a.length < 2) return line('usage: superpose A B', 'mid');
+      const r = await runOnServer(a[0], a[1], 1024);
+      if (r.plan.a_text !== a[0] || r.plan.b_text !== a[1]) line('different lengths. padded the shorter one with spaces.', 'low');
+      showRun(r);
+    },
+    async run(a) {
+      if (!last) return line('nothing to run. try: wink', 'mid');
+      let n = parseInt(a[0] || '1024', 10); if (!(n >= 1)) n = 1024;
+      showRun(await runOnServer(last.a, last.b, Math.min(n, 8192)), true);
+    },
+    async circuit() {
+      if (!last) return line('no circuit yet. try: wink', 'mid');
+      const r = lastResult || await runOnServer(last.a, last.b, last.shots);
+      if (!r.drawing) return line(`${r.plan.n} qubits is too tall to draw. try: qiskit`, 'mid');
+      const w = el('div', 'scroll-x'); w.appendChild(el('pre', null, r.drawing)); out(w);
+      line('then qc.measure(qr, cr) on every qubit', 'low');
+    },
+    async qiskit() {
+      if (!last) return line('no circuit yet. try: wink', 'mid');
+      const r = lastResult || await runOnServer(last.a, last.b, last.shots);
+      codeBox(r.qiskit);
+      line('pip install qiskit qiskit-aer', 'low');
+    },
+    decode(a) {
+      const b = a.join('').replace(/[^01]/g, '');
+      if (!b || b.length % 8) return line('usage: decode BITS (multiple of 8)', 'mid');
+      const bytes = new Uint8Array(b.length / 8);
+      for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(b.slice(i * 8, i * 8 + 8), 2);
+      out(regEl(b, '-> ' + new TextDecoder().decode(bytes).replace(/[\x00-\x1f\x7f]/g, '.')));
+    },
+    noise(a) {
+      if (!a.length) return line(`readout err ${(noise * 100).toFixed(1)}% per qubit`, 'mid');
+      const p = parseFloat(a[0]);
+      if (!(p >= 0 && p <= 0.25)) return line('pick 0 to 0.25, e.g. noise 0.03', 'mid');
+      noise = p; lastResult = null;
+      document.getElementById('nz').textContent = (p * 100).toFixed(1).replace(/\.0$/, '') + '%';
+      line(p ? `each qubit now misreads ${(p * 100).toFixed(1)}% of the time. try wink, or talk to me.` : 'noise off. ideal simulator.', 'mid');
+    },
+    clear() { log.textContent = ''; },
+  };
+  const names = Object.keys(commands);
+
+  async function exec(raw) {
+    const s = raw.trim();
+    if (!s) return;
+    if (busy) { line('still measuring the last one...', 'low'); return; }
+    const head = s.split(/\s+/)[0], name = head.toLowerCase();
+    busy = true;
+    try {
+      if (commands[name]) { echo(s); await commands[name](parseArgs(s.slice(head.length).trim())); }
+      else await talk(s);
+    } catch (e) { line(String(e && e.message || e), 'mid'); }
+    finally { busy = false; idleTimer(); }
+  }
+
+  // ---------- idle heartbeat ----------
+  let idleT = null, pings = 0;
+  const idleLines = ['still here. holding |;)> + |8)> until you look', 'idle. the qubits are decohering politely', 'heartbeat: measured the wink register once'];
+  function idleTimer() {
+    clearTimeout(idleT);
+    if (pings >= 3) return;
+    idleT = setTimeout(async () => {
+      if (busy || document.hidden) return idleTimer();
+      try {
+        const r = await api('/api/run', { a: ';)', b: '8)', shots: 1, noise: 0 });
+        const d = el('div', 'ln gap mid');
+        d.append(el('span', 'who q', 'qpu> '), document.createTextNode(idleLines[pings] + ' '), el('span', 'bold', r.counts[0].text));
+        out(d); pings++;
+      } catch (e) {}
+      idleTimer();
+    }, 45000);
+  }
+
+  // ---------- input ----------
+  document.getElementById('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = input.value;
+    if (v.trim()) { hist.push(v); hIdx = hist.length; }
+    input.value = '';
+    exec(v);
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' && hist.length) { e.preventDefault(); hIdx = Math.max(0, hIdx - 1); input.value = hist[hIdx]; }
+    else if (e.key === 'ArrowDown' && hist.length) { e.preventDefault(); hIdx = Math.min(hist.length, hIdx + 1); input.value = hist[hIdx] || ''; }
+    else if (e.key === 'Tab') {
+      const v = input.value.toLowerCase(), m = names.filter(n => n.startsWith(v));
+      if (v && m.length) { e.preventDefault(); if (m.length === 1) input.value = m[0] + ' '; else line(m.join('   '), 'low'); }
+    }
+    idleTimer();
+  });
+  log.addEventListener('click', e => { if (e.target.closest('a,button')) return; if (String(getSelection())) return; input.focus({ preventScroll: true }); });
+
+  const chips = document.getElementById('chips');
+  ['help', 'lore', 'wink', 'superpose ;) 8)', 'superpose cat dog', 'circuit', 'qiskit', 'noise 0.03', 'noise 0', 'clear'].forEach(c => {
+    const b = el('button', null, '[ ' + c + ' ]'); b.type = 'button';
+    b.addEventListener('click', () => { hist.push(c); hIdx = hist.length; exec(c); });
+    chips.appendChild(b);
+  });
+
+  // ---------- boot ----------
+  fetch('/api/health').then(r => r.json()).then(h => {
+    document.getElementById('voice').textContent = h.voice === 'claude' ? 'claude' : 'offline';
+  }).catch(() => { document.getElementById('voice').textContent = 'unreachable'; });
+
+  line('qpu-16 online. a homage to quantum computing stack exchange answer #1685.', 'mid');
+  line('talk to me in plain words. everything goes through real qiskit circuits. type help for commands.', 'low');
+  (async () => {
+    busy = true;
+    echo('superpose ;) 8)');
+    try { await commands.superpose([';)', '8)']); } catch (e) { line('backend unreachable: ' + e.message, 'mid'); }
+    busy = false;
+    const d = el('div', 'ln gap');
+    d.append(el('span', 'who q', 'qpu> '), document.createTextNode('the wink is loaded. say something '), el('span', 'bold', ';)'));
+    out(d);
+    idleTimer();
+  })();
+})();
+</script>
+</body>
+</html>

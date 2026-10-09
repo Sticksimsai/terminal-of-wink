@@ -1,0 +1,14 @@
+# One-click deploy on Render: New > Blueprint, point it at this repo.
+services:
+  - type: web
+    name: qubit-wink
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-5-5
+      - key: TRUST_PROXY
+        value: "1"
