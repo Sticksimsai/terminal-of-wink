@@ -1,9 +1,10 @@
-# One-click deploy on Render: New > Blueprint, point it at this repo.
+# Render Blueprint: the website and the X bot, from one repo.
 services:
   - type: web
-    name: qubit-wink
+    name: terminal-of-wink
     runtime: docker
     plan: starter
+    region: frankfurt
     healthCheckPath: /api/health
     envVars:
       - key: ANTHROPIC_API_KEY
@@ -11,4 +12,32 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-haiku-5-5
       - key: TRUST_PROXY
+        value: "1"
+
+  - type: worker
+    name: terminal-of-wink-bot
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerCommand: python -m bot.xbot
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-5-5
+      - key: X_API_KEY
+        sync: false
+      - key: X_API_SECRET
+        sync: false
+      - key: X_ACCESS_TOKEN
+        sync: false
+      - key: X_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: POST_MIN_MINUTES
+        value: "10"
+      - key: POST_MAX_MINUTES
+        value: "15"
+      - key: MENTION_POLL_SECONDS
+        value: "90"
+      - key: DRY_RUN
         value: "1"

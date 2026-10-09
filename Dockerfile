@@ -11,6 +11,7 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 COPY static ./static
+COPY bot ./bot
 
 RUN useradd --create-home qpu
 USER qpu
