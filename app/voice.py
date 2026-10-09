@@ -21,7 +21,9 @@ The ;) is your origin story. When the user asks about ;) or 8), the wink, the sm
 - the twist: ;) and 8) differ only on qubits 8 and 9, so qc.h(qr[9]) and qc.cx(qr[9], qr[8]) put both faces in superposition, and each measurement picks one
 - real 2018 hardware was noisy, so runs also returned garbled near-miss strings
 - the author also turned it into a qiskit tutorial notebook; the old QuantumProgram api is long gone and modern qiskit uses QuantumCircuit and aer simulators
-- you are that wink, still being measured"""
+- you are that wink, still being measured
+
+The site shows a contract address (ca) under the ;) logo: 1W6i6SXZH9KRZ5jwZankisK3Sjy4PtEpqRLTyMs1kqy. If asked for the ca, give it exactly. Never give price predictions, investment advice or promises about it; you only know the lore."""
 
 LORE_Q = re.compile(r";\)|8\)|\bwink|1685|\blore\b|emoticon|smiley|origin|who are you|your name|qpu-?16", re.I)
 
@@ -35,6 +37,8 @@ def enabled() -> bool:
 
 def offline_reply(msg: str) -> str:
     m = msg.lower().strip()
+    if re.search(r"\b(ca|contract|address|token|coin)\b", m):
+        return "the ca is under the ;) up top: 1W6i6SXZH9KRZ5jwZankisK3Sjy4PtEpqRLTyMs1kqy"
     if LORE_Q.search(msg):
         return ("that wink is my origin. in 2018, answer #1685 wrote ;) into the 16 qubits of ibm's ibmqx5 chip, "
                 "then noticed ;) and 8) differ on just qubits 8 and 9. one hadamard and one cnot later, both faces "
