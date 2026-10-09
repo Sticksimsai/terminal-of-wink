@@ -109,12 +109,13 @@ class Brain:
         self.client = None
         if os.environ.get("ANTHROPIC_API_KEY"):
             from anthropic import Anthropic
-            self.client = Anthropic()
+            self.client = Anthropic(timeout=60, max_retries=2)
 
     def ask(self, task: str, context: str = "") -> dict | None:
         if not self.client:
             return None
         prompt = (context + "\n\n" if context else "") + task
+        log.info("asking claude...")
         try:
             msg = self.client.messages.create(
                 model=MODEL, max_tokens=400, system=persona.PERSONA,
@@ -274,6 +275,8 @@ class XApi:
             consumer_key=os.environ["X_API_KEY"], consumer_secret=os.environ["X_API_SECRET"],
             access_token=os.environ["X_ACCESS_TOKEN"], access_token_secret=os.environ["X_ACCESS_TOKEN_SECRET"],
         )
+        _request = self.c.session.request
+        self.c.session.request = lambda *a, **kw: _request(*a, **{"timeout": 30, **kw})  # never hang on X
         me = self.c.get_me(user_auth=True).data
         self.me_id, self.me_username = str(me.id), me.username
 
@@ -338,14 +341,18 @@ class Bot:
         if not self.x:
             return
         log.info("signed in as @%s (%s)%s", self.x.me_username, self.x.me_id, "  [DRY RUN]" if self.dry_run else "")
+        log.info("loading recent posts...")
         for t in reversed(self.x.own_recent(50)):
             self.recent.append(t["text"])
             self.replied.update(t["replied_to"])
+        log.info("loading mentions...")
         ms = self.x.mentions(None, 20)
         if ms:
             self.since_id = ms[-1]["id"]
         cutoff = now - BOOT_REPLY_WINDOW_MIN * 60
         self.handle_mentions([m for m in ms if m["created_at"] and m["created_at"].timestamp() > cutoff])
+        log.info("ready: %d recent posts, %d mentions seen. first post in %.0f seconds",
+                 len(self.recent), len(ms), self.next_post - time.time())
 
     def publish(self, text: str, reply_to: str | None = None) -> None:
         if self.dry_run or not self.x:
@@ -356,6 +363,7 @@ class Bot:
 
     def do_post(self):
         mode = random.choices(list(MODES), weights=list(MODES.values()))[0]
+        log.info("writing a %s post...", mode)
         text = build_post(self.brain, mode, list(self.recent))
         if not text or text in self.recent:
             return
@@ -391,10 +399,21 @@ class Bot:
 
     def poll(self):
         if self.x:
-            self.handle_mentions(self.x.mentions(self.since_id))
+            ms = self.x.mentions(self.since_id)
+            if ms:
+                log.info("%d new mention(s)", len(ms))
+            self.handle_mentions(ms)
 
     def run_forever(self):
-        self.boot()
+        wait = 60
+        while True:  # keep retrying start-up: credits not applied yet, X hiccups, rate limits
+            try:
+                self.boot()
+                break
+            except Exception as e:
+                log.warning("start-up failed (%s: %s); retrying in %ss", type(e).__name__, e, wait)
+                time.sleep(wait)
+                wait = min(wait * 2, 900)
         backoff = 0
         while True:
             now = time.time()
@@ -402,6 +421,7 @@ class Bot:
                 if now >= self.next_post:
                     self.schedule_post(now)
                     self.do_post()
+                    log.info("next post in %.0f minutes", (self.next_post - time.time()) / 60)
                 if now >= self.next_poll:
                     self.next_poll = now + POLL_SECONDS
                     self.poll()
@@ -416,6 +436,8 @@ class Bot:
 
 def main():
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+    for noisy in ("qiskit", "httpx", "anthropic", "urllib3"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", type=int, metavar="N", help="print N sample posts and exit (no X access)")
     args = ap.parse_args()
