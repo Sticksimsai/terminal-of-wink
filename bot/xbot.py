@@ -49,7 +49,10 @@ MAX_REPLIES_PER_POLL = int(env_float("MAX_REPLIES_PER_POLL", 15))
 MAX_REPLIES_PER_USER_30MIN = int(env_float("MAX_REPLIES_PER_USER_30MIN", 3))
 BOOT_REPLY_WINDOW_MIN = env_float("BOOT_REPLY_WINDOW_MINUTES", 30)
 DRY_RUN = os.environ.get("DRY_RUN", "0") == "1"
-MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-5-5")
+MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-5-5")              # its own posts
+REPLY_MODEL = os.environ.get("REPLY_MODEL", "claude-sonnet-5-5")            # replies: smarter, can research
+WEB_SEARCH = os.environ.get("REPLY_WEB_SEARCH", "1") == "1"
+MAX_SEARCHES = int(env_float("MAX_SEARCHES_PER_REPLY", 2))
 
 MODES = {"thought": 24, "explain": 18, "bits": 12, "superpose": 13, "shots": 12, "art": 12, "lore": 9}
 ART_KEYS = ", ".join(art.ART_KEYS)
@@ -57,7 +60,10 @@ ART_KEYS = ", ".join(art.ART_KEYS)
 MAX_LEN = 280
 URL_RE = re.compile(r"(https?://\S+|www\.\S+|\b[\w-]+\.(com|io|xyz|net|org|app|fun|ai)\b\S*)", re.I)
 CA_ASK_RE = re.compile(r"\b(ca|contract|address|mint)\b", re.I)
-MONEY_RE = re.compile(r"\b(price|pump|moon|buy|sell|chart|mcap|market ?cap|100x|1000x|gains|invest|financial advice|nfa|ape)\b", re.I)
+# advice / hype language the bot must never use (stating reported history is allowed)
+MONEY_RE = re.compile(r"\b(bullish|bearish|buy now|you should buy|should (?:you )?buy|ape in|to the moon|moon(?:ing)?|"
+                      r"100x|1000x|will pump|pump it|price prediction|price target|guaranteed|financial advice|nfa|"
+                      r"not financial advice|good investment|invest in)\b", re.I)
 
 
 # ---------------------------------------------------------------- formatting helpers
@@ -111,21 +117,43 @@ class Brain:
         self.client = None
         if os.environ.get("ANTHROPIC_API_KEY"):
             from anthropic import Anthropic
-            self.client = Anthropic(timeout=60, max_retries=2)
+            self.client = Anthropic(timeout=90, max_retries=2)
 
-    def ask(self, task: str, context: str = "") -> dict | None:
+    def ask(self, task: str, context: str = "", model: str | None = None, research: bool = False) -> dict | None:
+        raw = self.ask_raw(task, context, model, research)
+        return parse_json(raw) if raw else None
+
+    def ask_raw(self, task: str, context: str = "", model: str | None = None, research: bool = False) -> str | None:
+        """One Claude call. With research=True Claude may run a few web searches first."""
         if not self.client:
             return None
         prompt = (context + "\n\n" if context else "") + task
-        log.info("asking claude...")
+        kwargs = dict(model=model or MODEL, max_tokens=1200 if research else 400, system=persona.PERSONA)
+        if research:
+            kwargs["tools"] = [{"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_SEARCHES}]
+        messages = [{"role": "user", "content": prompt}]
+        log.info("asking claude%s...", " (may search)" if research else "")
         try:
-            msg = self.client.messages.create(
-                model=MODEL, max_tokens=400, system=persona.PERSONA,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-            return parse_json(raw)
-        except Exception:
+            for _ in range(3):  # a search turn can pause; resend to let it finish
+                msg = self.client.messages.create(messages=messages, **kwargs)
+                if msg.stop_reason != "pause_turn":
+                    break
+                messages = [messages[0], {"role": "assistant", "content": msg.content}]
+            searches = sum(1 for b in msg.content if getattr(b, "type", "") == "server_tool_use")
+            if searches:
+                log.info("searched the web %d time(s)", searches)
+            # the answer is the text written after the last search result (citations split it into pieces)
+            blocks = list(msg.content)
+            last_result = max((i for i, b in enumerate(blocks) if getattr(b, "type", "") == "web_search_tool_result"), default=-1)
+            raw = "".join(getattr(b, "text", "") for b in blocks[last_result + 1:] if getattr(b, "type", "") == "text").strip()
+            if not raw:
+                log.warning("claude gave no text (stop_reason=%s)", msg.stop_reason)
+                return None
+            return raw
+        except Exception as e:
+            if research:  # e.g. search not available for this model: answer without it
+                log.warning("research call failed (%s); retrying without search", e)
+                return self.ask_raw(task, context, model, research=False)
             log.exception("claude call failed")
             return None
 
@@ -245,16 +273,24 @@ def build_reply(brain: Brain, mention_text: str, author: str, parent_text: str |
     if recent_replies:
         ctx = "Your recent replies (never reuse their openers or phrasing):\n" + "\n".join(
             f"- {r[:120]}" for r in recent_replies[-12:]) + "\n\n" + ctx
-    out = brain.ask(persona.REPLY_TASK.format(art_keys=ART_KEYS), ctx)
-    if out is None:  # offline
-        if asked_ca:
-            return f"ca: {persona.CA}"
-        return random.choice(["received. measured. ;)", "your message arrived as qubits and survived", "8)"])
+    if not brain.client:  # no Claude at all
+        return f"ca: {persona.CA}" if asked_ca else None
+    out = brain.ask(persona.REPLY_TASK.format(art_keys=ART_KEYS), ctx, model=REPLY_MODEL, research=WEB_SEARCH)
+    if out is None:  # unreadable answer: ask once more for plain text
+        plain = brain.ask_raw(persona.REPLY_PLAIN_TASK, ctx, model=REPLY_MODEL)
+        out = {"text": plain} if plain and "{" not in plain else None
+    if out is None:
+        log.warning("no usable reply; staying quiet rather than posting filler")
+        return f"ca: {persona.CA}" if asked_ca else None
     if out.get("skip"):
+        log.info("chose not to reply")
         return None
     text = sanitize(str(out.get("text", "")), allow_ca=asked_ca)
     if not asked_ca and MONEY_RE.search(text):
-        text = "i only know how to measure. the rest is noise ;)"
+        fixed = brain.ask_raw(persona.REWRITE_TASK + "\n\nReply to rewrite:\n" + text, ctx, model=REPLY_MODEL)
+        text = sanitize(fixed or "", allow_ca=asked_ca)
+        if not text or MONEY_RE.search(text):
+            text = "i can tell you what happened, never what happens next. that's measurement, not prophecy ;)"
     word = ascii_only(str(out.get("encode", "") or "")).strip()[:8]
     drawing = art.render(str(out.get("art", "") or ""))
     if word:

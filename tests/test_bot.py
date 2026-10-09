@@ -12,9 +12,13 @@ class FakeBrain:
         self.client = object()
         self.prompts = []
 
-    def ask(self, task, context=""):
+    def ask(self, task, context="", model=None, research=False):
         self.prompts.append(context + task)
         return self.answers.pop(0) if self.answers else None
+
+    def ask_raw(self, task, context="", model=None, research=False):
+        self.prompts.append(context + task)
+        return None
 
 
 class FakeX:
@@ -107,3 +111,16 @@ def test_x_len_counts_wide_glyphs_double_and_fit_respects_it():
     assert xbot.x_len("abc") == 3
     assert xbot.x_len("█─⊕") == 6
     assert xbot.x_len(xbot.fit("█" * 300)) <= 280
+
+
+def test_unreadable_answer_means_silence_not_filler():
+    brain = FakeBrain()  # every call comes back empty
+    assert xbot.build_reply(brain, "how high did truth terminal go", "anon", None) is None
+
+
+def test_reported_history_allowed_but_hype_rewritten():
+    brain = FakeBrain({"skip": False, "text": "truth terminal's goat token passed a big market cap in 2024", "encode": "", "art": ""})
+    assert "market cap" in xbot.build_reply(brain, "how high did it go", "anon", None)
+    brain = FakeBrain({"skip": False, "text": "very bullish, ape in", "encode": "", "art": ""})
+    r = xbot.build_reply(brain, "bullish?", "anon", None)
+    assert "bullish" not in r and "ape" not in r
